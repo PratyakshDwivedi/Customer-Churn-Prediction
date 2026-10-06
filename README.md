@@ -1,104 +1,143 @@
 # Customer Churn Prediction Pipeline
 
-An end-to-end, production-style machine learning pipeline that predicts
-customer churn. Raw records live in a **SQL database**; the pipeline
-extracts them, validates and cleans the data, engineers features, trains
-and compares two classifiers, automatically selects the best one, and
-persists reusable artifacts so new customer batches can be scored
-**without retraining**.
+> An end-to-end, production-style machine learning pipeline that predicts customer churn — from a **SQL database** all the way to **scored predictions on unseen customers** — with validation, cleaning, feature engineering, automated model selection, persisted artifacts, and a full test suite.
 
-> All metrics in this README are produced by actually running the
-> pipeline (`reports/metrics/metrics.json`). None are hand-written.
+<p>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="scikit-learn" src="https://img.shields.io/badge/scikit--learn-ML-F7931E?logo=scikitlearn&logoColor=white">
+  <img alt="pandas" src="https://img.shields.io/badge/pandas-data-150458?logo=pandas&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-database-003B57?logo=sqlite&logoColor=white">
+  <img alt="pytest" src="https://img.shields.io/badge/pytest-26%20tests-0A9EDC?logo=pytest&logoColor=white">
+</p>
 
-## Overview
+---
 
-The goal is a reproducible churn classifier that mirrors how such a
-system is built in practice: SQL as the source of truth, a strict
-train/inference contract (the same cleaning, feature engineering and
-*fitted* preprocessing are reused at prediction time), automated model
-selection from real metrics, and a full test suite.
+## Why this project
+
+Customer churn is one of the highest-value classification problems in subscription businesses. This repository is a compact but realistic demonstration of how such a model is built in practice — not a notebook experiment, but a modular, reproducible pipeline with a strict **train/inference contract**: the *same* cleaning and feature-engineering code runs in both paths, and inference reuses the *already-fitted* preprocessing object rather than refitting a new one.
+
+**What it demonstrates**
+
+- Treating **SQL as the source of truth** with a reusable, injection-safe data-access layer.
+- A validation layer that separates **fatal errors** from **recoverable data-quality issues**.
+- Leakage-free feature engineering and a scikit-learn `ColumnTransformer` / `Pipeline`.
+- Training and comparing **two models**, then selecting a winner from **actual computed metrics** (no hard-coding).
+- Persisting artifacts with `joblib` so **new customers are scored without retraining**.
+- Reproducibility via a fixed seed and centralized, environment-overridable configuration.
+- A **26-test** `pytest` suite covering the database, validation, cleaning, feature engineering, preprocessing, training, evaluation, and prediction.
+
+---
 
 ## Architecture
 
-```
-          ┌─────────────────┐
-          │   SQL Database  │   (SQLite)
-          └────────┬────────┘
-                   ↓
-            Data Extraction      src/data/extraction.py
-                   ↓
-            Data Validation      src/data/validation.py   (fatal vs recoverable)
-                   ↓
-             Data Cleaning       src/data/preprocessing.py:clean_data
-                   ↓
-          Feature Engineering    src/features/engineering.py
-                   ↓
-   ┌──────────────────────────┐
-   │     ColumnTransformer     │  src/data/preprocessing.py:build_preprocessor
-   │  + scikit-learn Pipeline  │  (impute + scale + one-hot)  ← fitted once, saved
-   └───────────┬──────────────┘
-               ↓
-     ┌─────────┴─────────┐
-     ↓                   ↓
-Logistic Regression   Random Forest     src/models/train.py
-     ↓                   ↓
-     └─────────┬─────────┘
-               ↓
-       Model Evaluation           src/models/evaluate.py   (F1 + ROC-AUC + more)
-               ↓
-       Model Selection            src/models/selection.py  (automated, documented rule)
-               ↓
-   Saved Best Model + Saved Preprocessor   (models/*.joblib)
-               ↓
-       New Customer Data
-               ↓
-         Prediction               src/models/predict.py
+```mermaid
+flowchart TD
+    A[("SQLite database<br/>customers table")] --> B[Data Extraction<br/><code>src/data/extraction.py</code>]
+    B --> C[Data Validation<br/><code>src/data/validation.py</code>]
+    C -->|fatal errors| X[["Stop the run"]]
+    C -->|recoverable issues| D[Data Cleaning<br/><code>src/data/preprocessing.py:clean_data</code>]
+    D --> E[Feature Engineering<br/><code>src/features/engineering.py</code>]
+    E --> F[Preprocessing: ColumnTransformer<br/>impute + scale + one-hot<br/><code>build_preprocessor</code>]
+    F --> G1[Logistic Regression]
+    F --> G2[Random Forest]
+    G1 --> H[Model Evaluation<br/>F1 · ROC-AUC · precision · recall · accuracy]
+    G2 --> H
+    H --> I[Automated Model Selection<br/>F1 primary, ROC-AUC tie-break<br/><code>src/models/selection.py</code>]
+    I --> S[("Saved artifacts<br/>best_model.joblib<br/>preprocessing_pipeline.joblib")]
+    S --> P[Prediction on new customers<br/><code>src/models/predict.py</code>]
+    N[("New customer CSV")] --> P
+    P --> O[("predictions.csv<br/>customer_id, predicted_churn, churn_probability")]
 ```
 
-The **training** and **inference** paths deliberately share the exact
-same cleaning and feature-engineering functions, and inference loads the
-*already-fitted* preprocessor rather than fitting a new one:
+The training and inference paths share the same cleaning and feature-engineering functions, and inference loads the fitted preprocessor rather than fitting a new one:
 
-```
-TRAINING:   Raw SQL → clean → engineer → FIT preprocessor → train models
-INFERENCE:  New raw → clean → engineer → APPLY saved preprocessor → saved model → predict
+```text
+TRAINING:   Raw SQL  → clean → engineer → FIT preprocessor → train models → select → save
+INFERENCE:  New rows → clean → engineer → APPLY saved preprocessor → saved model → predict
 ```
 
-## Features
+---
 
-- SQL-backed ingestion with a reusable, injection-safe database loader.
-- Validation layer that separates **fatal errors** (stop the run) from
-  **recoverable data-quality issues** (reported, then cleaned).
-- Stateless cleaning + leakage-free feature engineering, reused verbatim
-  at inference.
-- scikit-learn `ColumnTransformer` / `Pipeline` for imputation, scaling
-  and one-hot encoding, persisted with joblib.
-- Two models trained and compared; the winner chosen automatically from
-  computed metrics.
-- Machine-readable metrics (`JSON`) plus confusion-matrix, ROC and
-  comparison figures.
-- Batch prediction CLI that scores unseen customers without retraining.
-- Full `pytest` suite and environment-variable-based configuration.
+## Tech stack
 
-## Tech Stack
+| Area | Tools (all actually used in this repo) |
+|------|----------------------------------------|
+| Language | Python (3.10+) |
+| Data | pandas, NumPy |
+| Storage / SQL | SQLite (via Python's standard-library `sqlite3`) |
+| ML | scikit-learn (`Pipeline`, `ColumnTransformer`, `LogisticRegression`, `RandomForestClassifier`) |
+| Persistence | joblib |
+| Visualization | Matplotlib, seaborn |
+| Testing | pytest |
+| Config | python-dotenv (`.env` overrides) |
 
-Python · SQL (SQLite) · pandas · NumPy · scikit-learn · joblib ·
-Matplotlib · seaborn · pytest · python-dotenv
+No cloud services, containers, web frameworks, or external MLOps tools are used — the project runs entirely on a normal laptop.
 
-## Project Structure
+---
+
+## Results
+
+Produced by actually running the pipeline with the default seed (`42`) and written to `reports/metrics/metrics.json`. Metrics are evaluated on a held-out, stratified test set of **1,200 rows**.
+
+| Model | F1 | ROC-AUC | Accuracy | Precision | Recall |
+|-------|---:|--------:|---------:|----------:|-------:|
+| **Logistic Regression** _(selected)_ | **0.5751** | **0.7470** | 0.6700 | 0.4917 | 0.6925 |
+| Random Forest | 0.5711 | 0.7446 | 0.6908 | 0.5167 | 0.6382 |
+
+**Selected model: Logistic Regression.** Selection is automated: F1 is the primary metric, and models whose F1 is within `0.01` of the best are treated as tied and decided on ROC-AUC. Both models fell within tolerance, so the tie-break applied and Logistic Regression won on its higher ROC-AUC (0.7470 vs 0.7446).
+
+> The moderate ROC-AUC (~0.75) is expected: the synthetic dataset is generated with a deliberately **noisy** feature→churn relationship so performance is realistic rather than artificially perfect. Running the pipeline regenerates these numbers and the figures in `reports/figures/` (per-model confusion matrices, overlaid ROC curves, and a model-comparison bar chart).
+
+---
+
+## Dataset
+
+The dataset is **synthetic and reproducible** — no proprietary or external data is used. `src/data/generation.py` builds a configurable number of customers (default 6,000) from a fixed seed, deliberately injecting the data-quality problems the pipeline exists to handle:
+
+- missing values (`tech_support`, `monthly_charges`),
+- duplicate `customer_id` values,
+- impossible ages and negative charges,
+- `total_charges` stored as **text** with blank entries (mirroring the well-known Telco export),
+- inconsistent category spellings/casing.
+
+Attributes include demographics (`age`, `gender`, `senior_citizen`, `partner`, `dependents`), account details (`tenure_months`, `contract_type`, `payment_method`, `internet_service`, `tech_support`, `online_security`, `paperless_billing`), charges (`monthly_charges`, `total_charges`), and the target `churn`.
+
+---
+
+## How the pipeline works
+
+**1. SQL layer** — Records live in a SQLite `customers` table (`database/schema.sql`). `total_charges` is typed as text and `customer_id` is intentionally **not** unique, so data quality is enforced in code rather than hidden by the schema. `src/database/loader.py` provides a context-managed connection, parameterized reads, bulk seeding via pandas, and a table-name allow-list guarding against SQL injection. The pipeline reads from SQL, never directly from a CSV.
+
+**2. Validation** (`src/data/validation.py`) — Produces a structured report splitting **fatal errors** (missing required columns, empty data, an unusable target → the run stops) from **recoverable issues** (duplicates, missing values, out-of-range numbers → reported, then cleaned). Nothing is dropped silently.
+
+**3. Cleaning** (`clean_data`) — Stateless: resolves duplicate IDs, coerces numeric columns (blanks → `NaN`), canonicalizes category spellings, sets out-of-range values to `NaN`, and encodes the target to 0/1. Learning no statistics means it is safe to reuse verbatim at inference.
+
+**4. Feature engineering** (`src/features/engineering.py`) — Row-local and leakage-free: `avg_monthly_spend`, `charges_per_tenure`, `service_count`, and a categorical `tenure_group`. No feature uses the target or dataset-wide aggregates.
+
+**5. Preprocessing** (`build_preprocessor`) — A `ColumnTransformer`: numeric features get median imputation + standard scaling; categorical features get most-frequent imputation + one-hot encoding (`handle_unknown='ignore'`). It is fitted **once** on the training split, saved, and reused unchanged at inference.
+
+**6. Models** — **Logistic Regression** (`class_weight='balanced'`) and **Random Forest** (300 trees, depth-limited, `class_weight='balanced_subsample'`). The ~32% class imbalance is handled with class weighting plus a stratified split — a deliberately simple, well-understood choice rather than resampling techniques that aren't warranted at this skew.
+
+**7. Evaluation & selection** — F1 and ROC-AUC (plus accuracy, precision, recall, confusion matrix) are computed on the test set; the winner is chosen by the documented rule in `src/models/selection.py`; metrics are written to JSON and figures to `reports/figures/`.
+
+**8. Prediction** (`src/models/predict.py`) — Loads the saved preprocessor and model and scores a new batch through the identical cleaning/feature-engineering/preprocessing steps — **no retraining**.
+
+---
+
+## Project structure
 
 ```
 customer-churn-prediction/
 ├── data/
-│   ├── raw/                 # CSV reference copy of the generated data
-│   ├── processed/           # processed dataset + prediction outputs
-│   └── sample/              # new_customers.csv for prediction demos
+│   ├── raw/                 # CSV reference copy of generated data (gitignored)
+│   ├── processed/           # processed dataset + prediction outputs (gitignored)
+│   └── sample/              # new_customers.csv for the prediction demo
 ├── database/
 │   ├── schema.sql           # customers table definition
 │   ├── seed.sql             # example INSERTs (full seed is programmatic)
-│   └── churn.db             # SQLite database (generated)
+│   └── churn.db             # SQLite database (generated, gitignored)
 ├── src/
-│   ├── config.py            # central configuration (env-overridable)
+│   ├── config.py            # central, env-overridable configuration
 │   ├── database/loader.py   # reusable SQLite access layer
 │   ├── data/
 │   │   ├── generation.py    # synthetic dataset generator
@@ -112,7 +151,7 @@ customer-churn-prediction/
 │   │   ├── selection.py     # automated model selection
 │   │   └── predict.py       # load artifacts & score new data
 │   └── pipeline.py          # end-to-end orchestration
-├── models/                  # saved preprocessor + best model (generated)
+├── models/                  # saved preprocessor + best model (generated, gitignored)
 ├── reports/
 │   ├── figures/             # confusion matrices, ROC, comparison (generated)
 │   └── metrics/metrics.json # machine-readable metrics (generated)
@@ -120,107 +159,32 @@ customer-churn-prediction/
 │   ├── setup_database.py    # generate data + seed the database
 │   ├── train.py             # run the training pipeline
 │   └── predict.py           # score a new batch
-├── tests/                   # pytest suite
+├── tests/                   # pytest suite (26 tests)
 ├── requirements.txt
 ├── pyproject.toml
 ├── .env.example
 └── .gitignore
 ```
 
-## Dataset
+Generated artifacts (the database, `.joblib` models, figures, raw/processed CSVs) are intentionally **not** committed — they are fully reproducible from the scripts below.
 
-The dataset is **synthetic and reproducible** (no proprietary data is
-used). `src/data/generation.py` builds ~6,000 customers from a fixed
-seed, with:
+---
 
-- a genuine but **noisy** logistic relationship between features and
-  churn (so performance is realistic, not artificially perfect);
-- deliberate **data-quality issues** the pipeline must handle: missing
-  values, duplicate customer IDs, impossible ages, negative charges,
-  `total_charges` stored as text with blanks, and inconsistent category
-  spellings.
-
-Attributes include demographics (`age`, `gender`, `senior_citizen`,
-`partner`, `dependents`), account details (`tenure_months`,
-`contract_type`, `payment_method`, `internet_service`, `tech_support`,
-`online_security`, `paperless_billing`), charges (`monthly_charges`,
-`total_charges`) and the target `churn`.
-
-## Database
-
-Records are stored in a SQLite table `customers` (see
-`database/schema.sql`). `total_charges` is typed as text and
-`customer_id` is intentionally **not** unique, mirroring a messy
-production export so that data quality is enforced in code, not hidden by
-the database. `src/database/loader.py` provides a reusable loader with a
-context-managed connection, parameterized reads, and a table-name
-allow-list to prevent SQL injection. The pipeline reads from SQL — never
-directly from the CSV.
-
-## ML Pipeline
-
-**Cleaning** (stateless): resolves duplicate IDs, coerces numeric columns
-(blanks → `NaN`), canonicalises category spellings, sets out-of-range
-values (impossible ages, negative charges) to `NaN`, and encodes the
-target to 0/1. It learns no statistics, so it is safe to reuse at
-inference.
-
-**Feature engineering** (leakage-free, row-local): `avg_monthly_spend`,
-`charges_per_tenure`, `service_count`, and a categorical `tenure_group`.
-No feature uses the target or dataset-wide aggregates.
-
-**Preprocessing** (`ColumnTransformer`): numeric features → median
-imputation + standard scaling; categorical features → most-frequent
-imputation + one-hot encoding (`handle_unknown='ignore'`). It is fitted
-**once** on the training split and saved; inference reuses it unchanged.
-
-## Models
-
-- **Logistic Regression** — linear baseline, `class_weight='balanced'`.
-- **Random Forest** — non-linear ensemble (300 trees, depth-limited),
-  `class_weight='balanced_subsample'`.
-
-Class imbalance (~32% churn) is handled with class weighting plus a
-stratified split — a deliberately simple, well-understood approach rather
-than SMOTE, which is not warranted at this moderate skew.
-
-## Evaluation
-
-Primary metrics are **F1-score** and **ROC-AUC**; accuracy, precision,
-recall and the confusion matrix are also computed on a held-out test set
-(1,200 rows). Results from the latest run (seed 42):
-
-| Model               |     F1 | ROC-AUC | Accuracy | Precision | Recall |
-|---------------------|-------:|--------:|---------:|----------:|-------:|
-| Logistic Regression | 0.5751 |  0.7470 |   0.6700 |    0.4917 | 0.6925 |
-| Random Forest       | 0.5711 |  0.7446 |   0.6908 |    0.5167 | 0.6382 |
-
-Figures are written to `reports/figures/` (per-model confusion matrices,
-overlaid ROC curves, and a model-comparison bar chart).
-
-### Model selection
-
-Selection is automated and based solely on the computed metrics (see
-`src/models/selection.py`):
-
-1. **Primary metric: F1.** The best F1 defines the bar.
-2. **Tie-break: ROC-AUC.** Models whose F1 is within `0.01` of the best
-   are treated as tied; among them the highest ROC-AUC wins.
-
-On the latest run both models fell within the F1 tolerance, so the
-tie-break applied and **Logistic Regression** was selected on its higher
-ROC-AUC (0.7470 vs 0.7446).
-
-## Installation
+## Getting started
 
 ```bash
-# From the project root
+# Clone
+git clone https://github.com/PratyakshDwivedi/Customer-Churn-Prediction.git
+cd Customer-Churn-Prediction
+
+# Create & activate a virtual environment
 python -m venv .venv
-# Windows
+# Windows:
 .venv\Scripts\activate
-# macOS/Linux
+# macOS/Linux:
 source .venv/bin/activate
 
+# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -232,22 +196,20 @@ Python 3.10+ is required (built and verified on 3.11).
 # 1. Create and seed the SQLite database (also writes a prediction sample)
 python scripts/setup_database.py
 
-# 2. Train, evaluate, select, and save artifacts
+# 2. Train, evaluate, select the best model, and save artifacts
 python -m src.pipeline
-#   (equivalent: python scripts/train.py)
+#    (equivalent: python scripts/train.py)
 
-# 3. Score a new batch of customers (no retraining)
+# 3. Score a new batch of customers — no retraining
 python scripts/predict.py --input data/sample/new_customers.csv
 
 # 4. Run the test suite
 pytest
 ```
 
-## Example Prediction
+### Example prediction output
 
-Actual output from `python scripts/predict.py --input
-data/sample/new_customers.csv` (first rows of
-`data/processed/predictions.csv`):
+Actual output from scoring `data/sample/new_customers.csv` (`data/processed/predictions.csv`):
 
 ```
 customer_id,predicted_churn,churn_probability
@@ -259,24 +221,34 @@ C000005,1,0.7906
 C000006,0,0.1858
 ```
 
-## Reproducibility
+---
 
-- A fixed `RANDOM_SEED` (default 42) controls data generation, the
-  train/test split, and the models.
-- Configuration (seed, split size, dataset size, paths) is centralised in
-  `src/config.py` and overridable via environment variables / `.env`.
-- To rerun on new data, replace the records in the `customers` table (or
-  point `DATABASE_PATH` at another SQLite file with the same schema) and
-  rerun `python -m src.pipeline`. Scoring a different batch only requires
-  a new CSV passed to `scripts/predict.py` — no code changes.
+## Configuration & reproducibility
 
-## Future Improvements
+- `src/config.py` centralizes the random seed, test size, dataset size, database path, and artifact locations.
+- All of these can be overridden through environment variables (optionally via a local `.env` — see `.env.example`), e.g. `RANDOM_SEED`, `TEST_SIZE`, `N_CUSTOMERS`, `DATABASE_PATH`, `LOG_LEVEL`.
+- The fixed seed (default `42`) makes data generation, the train/test split, and the models deterministic.
+- To run on **new data**, replace the rows in the `customers` table (or point `DATABASE_PATH` at another SQLite file with the same schema) and rerun `python -m src.pipeline`. Scoring a different batch only needs a new CSV passed to `scripts/predict.py` — no code changes.
 
-These are **not yet implemented**; they are realistic next steps:
+---
 
-- Hyperparameter tuning (e.g. grid/Bayesian search).
+## Testing
+
+```bash
+pytest
+```
+
+The suite (26 tests across `tests/`) covers: database connection and parameterized extraction, the SQL-injection guard, validation (fatal vs recoverable), cleaning behavior, feature engineering, the fitted preprocessing shape, training of both models, metric ranges, the model-selection rule and its tie-break, artifact creation, and prediction on unseen data (including that inference is deterministic and does not refit the preprocessor).
+
+---
+
+## Future improvements
+
+These are **not implemented** — they are honest next steps, not existing features:
+
+- Hyperparameter tuning (grid / Bayesian search).
 - Cross-validation for more robust metric estimates.
-- Additional models (gradient boosting) in the comparison.
-- Experiment tracking (e.g. MLflow) and model/data versioning.
-- Data-drift detection and model monitoring in production.
-- A REST API / batch service for deployment.
+- Additional models (e.g. gradient boosting) in the comparison.
+- Experiment tracking and model/data versioning.
+- Data-drift detection and production monitoring.
+- A service/API layer for deployment.
