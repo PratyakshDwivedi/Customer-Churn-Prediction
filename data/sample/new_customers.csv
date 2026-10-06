@@ -1,0 +1,16 @@
+customer_id,age,gender,senior_citizen,partner,dependents,tenure_months,contract_type,payment_method,internet_service,tech_support,online_security,paperless_billing,monthly_charges,total_charges
+C000001,51,Male,0,Yes,No,58,Month-to-month,Credit card,Fiber optic,No,No,Yes,80.3,4690.89
+C000002,61,Male,0,Yes,No,6,Month-to-month,Mailed check,No,No internet service,No internet service,No,15.0,93.43
+C000003,44,Male,0,No,Yes,23,Two year,Electronic check,Fiber optic,Yes,No,No,74.75,1762.29
+C000004,20,Female,0,No,No,39,Month-to-month,Mailed check,Fiber optic,No,No,No,87.12,3363.04
+C000005,56,Male,0,No,No,9,One year,Credit card,Fiber optic,No,No,Yes,93.52,915.17
+C000006,19,Male,0,No,Yes,62,Two year,Credit card,Fiber optic,Yes,No,Yes,78.99,4891.04
+C000007,36,Female,0,No,No,17,One year,Bank transfer,DSL,No,No,Yes,57.23,941.44
+C000008,74,Male,1,No,No,21,Two year,Bank transfer,No,No internet service,No internet service,Yes,15.0,286.44
+C000009,49,Female,0,No,No,28,Month-to-month,Credit card,DSL,Yes,No,Yes,56.53,1604.28
+C000010,57,Male,0,No,No,6,Month-to-month,Bank transfer,Fiber optic,No,No,No,75.33, 
+C000011,82,Male,1,Yes,No,12,Month-to-month,Bank transfer,Fiber optic,No,No,Yes,70.19,860.74
+C000012,33,Female,0,Yes,Yes,23,Month-to-month,Mailed check,DSL,No,No,Yes,53.71,1248.71
+C000013,74,Male,1,No,No,15,One year,Mailed check,No,No internet service,No internet service,Yes,27.25,378.74
+C000014,68,Female,1,Yes,Yes,30,One year,Mailed check,Fiber optic,Yes,No,No,89.8,2688.59
+C000015,43,Male,0,Yes,No,46,Two year,Credit card,DSL,No,No,Yes,50.2,2249.58

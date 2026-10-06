@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment / secrets
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Generated artifacts. These are reproducible with `python scripts/setup_database.py`
+# and `python -m src.pipeline`, so they are not tracked.
+# ---------------------------------------------------------------------------
+database/churn.db
+models/*.joblib
+reports/figures/*.png
+reports/metrics/*.json
+data/raw/*.csv
+data/processed/*.csv
+
+# Keep the committed sample input used by the prediction demo / tests.
+!data/sample/new_customers.csv

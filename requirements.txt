@@ -1,0 +1,13 @@
+# Core data / ML stack for the churn pipeline.
+# Version floors reflect what the project was built and verified against;
+# newer compatible releases are expected to work.
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.5
+joblib>=1.4
+matplotlib>=3.8
+seaborn>=0.13
+python-dotenv>=1.0
+
+# Testing
+pytest>=8.0

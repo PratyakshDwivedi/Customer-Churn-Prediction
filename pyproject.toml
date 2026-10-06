@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "customer-churn-prediction"
+version = "1.0.0"
+description = "End-to-end, production-style customer churn prediction pipeline (SQL -> sklearn)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+# Run tests from the project root with `src` importable.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.black]
+line-length = 90
+
+[tool.ruff]
+line-length = 90
